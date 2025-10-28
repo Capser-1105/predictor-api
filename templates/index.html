@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dự đoán Tài Xỉu ML - Web App</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #1e1e2f;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 90%;
+            max-width: 800px;
+            background-color: #2a2a44;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        h1, h2, h3 {
+            color: #6a6aff;
+            border-bottom: 2px solid #3c3c6e;
+            padding-bottom: 10px;
+            margin-top: 20px;
+        }
+        #pasteArea {
+            border: 3px dashed #6a6aff;
+            min-height: 200px;
+            text-align: center;
+            line-height: 200px;
+            font-size: 1.2em;
+            cursor: pointer;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            transition: all 0.3s;
+            background-color: #3c3c6e;
+            overflow: hidden; /* Để chứa ảnh dán */
+        }
+        #pasteArea:hover {
+            border-color: #9c9cff;
+        }
+        .image-preview {
+            max-width: 100%;
+            max-height: 180px;
+            margin-top: 10px;
+            border-radius: 6px;
+        }
+        .result-box {
+            background-color: #1e1e2f;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .result-box p {
+            margin: 5px 0;
+        }
+        .taixiu {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #ffcc00; /* Vàng */
+        }
+        .taixiu.Tài {
+            color: #00ff99; /* Xanh lá */
+        }
+        .taixiu.Xỉu {
+            color: #ff5555; /* Đỏ */
+        }
+        .error {
+            color: #ff5555;
+            font-weight: bold;
+        }
+        button {
+            background-color: #6a6aff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #8c8cff;
+        }
+        input[type="number"] {
+            padding: 8px;
+            margin-right: 10px;
+            border-radius: 5px;
+            border: 1px solid #555;
+            background-color: #3c3c6e;
+            color: white;
+            width: 80px;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #6a6aff;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            display: none;
+            margin: 10px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔮 Dự đoán Tài Xỉu ML (Sử dụng Flask API)</h1>
+        
+        <section id="prediction">
+            <h2>1. Dán/Tải ảnh (Ctrl+V)</h2>
+            <div id="pasteArea" contenteditable="true" 
+                 onpaste="handlePaste(event)">
+                Dán ảnh chụp xí ngầu vào đây (Ctrl+V) hoặc Kéo/Thả file ảnh.
+            </div>
+            
+            <div id="previewContainer" style="display: none; text-align: center;">
+                <img id="imagePreview" class="image-preview" alt="Preview">
+                <p id="imageStatus"></p>
+                <button onclick="startPrediction()" id="predictBtn">Dự đoán Phiên Tiếp theo (N)</button>
+            </div>
+            
+            <div id="predictionResult" class="result-box" style="display: none;">
+                <h3>Kết quả Dự đoán Phiên N</h3>
+                <p style="display: none;"><strong>Phiên trước (N-2):</strong> <span id="dicePrev"></span></p>
+                <p style="display: none;"><strong>Phiên hiện tại (N-1):</strong> <span id="diceCurr"></span></p>
+                <p style="display: none;"><strong>Delta:</strong> <span id="deltas"></span></p>
+                <hr style="border-color: #3c3c6e; display: none;"> 
+                <p><strong>Tổng Điểm Dự đoán:</strong> <span id="predictedTotal"></span></p>
+                <p><strong>Dự đoán:</strong> <span id="predictedResult" class="taixiu"></span></p>
+            </div>
+            <div id="loadingSpinner" class="loading-spinner"></div>
+            <p id="messageArea" class="error"></p>
+        </section>
+
+        <section id="update" style="margin-top: 40px;">
+            <h2>2. Cập nhật Mô hình (Huấn luyện)</h2>
+            <p id="updateStatus">Vui lòng hoàn tất dự đoán trước khi cập nhật.</p>
+            
+            <div id="updateForm" style="display: none;">
+                <p style="color: #ffcc00;">Xác nhận Tổng điểm thực tế của Phiên **VỪA QUA** (<span id="updateDiceCurr"></span>):</p>
+                <input type="number" id="actualTotalInput" min="3" max="18" placeholder="Total N-1">
+                <button onclick="updateModel()" id="updateBtn">Cập nhật và Tái huấn luyện</button>
+            </div>
+        </section>
+        
+        <section id="statistics" style="margin-top: 40px;">
+            <h2>3. Thống kê Hiệu suất Mô hình</h2>
+            <div class="result-box">
+                <p>Tổng số phiên đã huấn luyện: <strong><span id="statsTotal">0</span></strong></p>
+                <p style="color: #00ff99;">Dự đoán Đúng: <strong><span id="statsCorrect">0</span></strong></p>
+                <p style="color: #ff5555;">Dự đoán Sai: <strong><span id="statsIncorrect">0</span></strong></p>
+                <hr style="border-color: #3c3c6e;">
+                <p><strong>Độ Chính xác (Accuracy):</strong> <strong><span id="statsAccuracy">0%</span></strong></p>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        let imageBase64 = null;
+        let predictionHistory = null;
+        
+        const pasteArea = document.getElementById('pasteArea');
+        const previewContainer = document.getElementById('previewContainer');
+        const imagePreview = document.getElementById('imagePreview');
+        const imageStatus = document.getElementById('imageStatus');
+        const predictBtn = document.getElementById('predictBtn');
+        const messageArea = document.getElementById('messageArea');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+
+        // Hàm tải thống kê
+        async function loadStats() {
+            try {
+                const response = await fetch("/api/stats");
+                const data = await response.json();
+                
+                document.getElementById('statsTotal').textContent = data.total;
+                document.getElementById('statsCorrect').textContent = data.correct;
+                document.getElementById('statsIncorrect').textContent = data.incorrect;
+                document.getElementById('statsAccuracy').textContent = `${data.accuracy}%`;
+            } catch (error) {
+                console.error("Lỗi tải thống kê:", error);
+            }
+        }
+
+        // --- Xử lý sự kiện dán/kéo thả ---
+        pasteArea.addEventListener('click', () => {
+            if (!imagePreview.src) pasteArea.innerHTML = ''; 
+        });
+
+        function handlePaste(event) {
+            event.preventDefault(); 
+            
+            const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+            let imageFound = false;
+
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        imageBase64 = e.target.result;
+                        imagePreview.src = imageBase64;
+                        
+                        pasteArea.innerHTML = ''; 
+                        previewContainer.style.display = 'block';
+                        imageStatus.textContent = 'Ảnh đã sẵn sàng. Nhấn "Dự đoán".';
+                    };
+                    reader.readAsDataURL(blob);
+                    imageFound = true;
+                    break;
+                }
+            }
+
+            if (!imageFound) {
+                pasteArea.innerHTML = 'Không tìm thấy ảnh trong clipboard. Vui lòng thử lại.';
+                previewContainer.style.display = 'none';
+            }
+        }
+
+        pasteArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            pasteArea.style.borderColor = '#9c9cff';
+        });
+
+        pasteArea.addEventListener('dragleave', () => {
+            pasteArea.style.borderColor = '#6a6aff';
+        });
+
+        pasteArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            pasteArea.style.borderColor = '#6a6aff';
+            
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imageBase64 = e.target.result;
+                    imagePreview.src = imageBase64;
+                    
+                    pasteArea.innerHTML = ''; 
+                    previewContainer.style.display = 'block';
+                    imageStatus.textContent = `File ${file.name} đã sẵn sàng. Nhấn "Dự đoán".`;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                pasteArea.innerHTML = 'File không phải là ảnh. Vui lòng thử lại.';
+            }
+        });
+
+
+        // Gửi dự đoán lên Flask API
+        async function startPrediction() {
+            if (!imageBase64) {
+                messageArea.textContent = "Vui lòng dán hoặc tải ảnh lên trước.";
+                return;
+            }
+
+            predictBtn.disabled = true;
+            messageArea.textContent = "";
+            loadingSpinner.style.display = 'block';
+
+            try {
+                const response = await fetch("/api/predict", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ image: imageBase64 }),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    predictionHistory = data.history;
+                    predictionHistory.predicted_result = data.prediction.result;
+                    
+                    // Ẩn các dòng chi tiết trong JS
+                    document.getElementById('dicePrev').textContent = '';
+                    document.getElementById('diceCurr').textContent = '';
+                    document.getElementById('deltas').textContent = '';
+                    
+                    // Hiển thị Tổng điểm và Dự đoán
+                    document.getElementById('predictedTotal').textContent = data.prediction.total;
+                    
+                    const resultSpan = document.getElementById('predictedResult');
+                    const result = data.prediction.result;
+
+                    if (result === 'HOLD') {
+                        resultSpan.textContent = "⚠️ RỦI RO CAO: KHÔNG NÊN CƯỢC";
+                        resultSpan.className = 'taixiu';
+                        resultSpan.style.color = '#FFD700'; 
+                    } else {
+                        resultSpan.textContent = result;
+                        resultSpan.className = 'taixiu ' + result;
+                        resultSpan.style.color = '';
+                    }
+
+                    document.getElementById('predictionResult').style.display = 'block';
+                    
+                    // Kích hoạt khu vực cập nhật
+                    document.getElementById('updateStatus').style.display = 'none';
+                    document.getElementById('updateForm').style.display = 'block';
+                    document.getElementById('updateDiceCurr').textContent = data.history.dice_curr.join('-');
+
+                } else {
+                    messageArea.textContent = `Lỗi Dự đoán: ${data.error || 'Lỗi không xác định.'}`;
+                    document.getElementById('predictionResult').style.display = 'none';
+                    predictionHistory = null;
+                }
+            } catch (error) {
+                messageArea.textContent = `Lỗi kết nối API: ${error.message}`;
+                document.getElementById('predictionResult').style.display = 'none';
+            } finally {
+                predictBtn.disabled = false;
+                loadingSpinner.style.display = 'none';
+            }
+        }
+
+        // Gửi yêu cầu cập nhật mô hình
+        async function updateModel() {
+            if (!predictionHistory) {
+                alert("Vui lòng dự đoán một phiên trước.");
+                return;
+            }
+
+            const actualTotal = parseInt(document.getElementById('actualTotalInput').value);
+
+            if (isNaN(actualTotal) || actualTotal < 3 || actualTotal > 18) {
+                alert("Tổng điểm thực tế phải từ 3 đến 18.");
+                return;
+            }
+
+            const updateBtn = document.getElementById('updateBtn');
+            updateBtn.disabled = true;
+            loadingSpinner.style.display = 'block';
+            messageArea.textContent = "";
+
+            try {
+                const response = await fetch("/api/update_model", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        features: predictionHistory.features,
+                        actual_total: actualTotal,
+                        dice_values_curr: predictionHistory.dice_curr,
+                        predicted_result: predictionHistory.predicted_result
+                    }),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    alert("✅ " + data.message);
+                    
+                    // Reset giao diện và biến trạng thái
+                    predictionHistory = null;
+                    imageBase64 = null;
+                    document.getElementById('imagePreview').src = '';
+                    document.getElementById('predictionResult').style.display = 'none';
+                    document.getElementById('previewContainer').style.display = 'none';
+                    document.getElementById('updateForm').style.display = 'none';
+                    document.getElementById('updateStatus').style.display = 'block';
+
+                    loadStats(); // Tải lại thống kê sau khi cập nhật thành công
+                } else {
+                    messageArea.textContent = `Lỗi Cập nhật: ${data.error || 'Lỗi không xác định.'}`;
+                }
+            } catch (error) {
+                messageArea.textContent = `Lỗi kết nối API: ${error.message}`;
+            } finally {
+                updateBtn.disabled = false;
+                loadingSpinner.style.display = 'none';
+            }
+        }
+        
+        // Gọi hàm tải thống kê khi trang được tải
+        document.addEventListener('DOMContentLoaded', loadStats);
+    </script>
+</body>
+</html>
